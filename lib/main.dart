@@ -10,12 +10,14 @@ import 'screens/chatroom_list_screen.dart';
 import 'screens/chat_screen.dart';
 import 'services/chat_service.dart';
 import 'services/websocket_service.dart';
+import 'services/auth_service.dart';
+import 'config/theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthService.initialize();
   runApp(const MyApp());
 }
-
-
 
 class MyApp extends StatelessWidget {
   const MyApp({Key? key}) : super(key: key);
@@ -24,10 +26,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Chat App',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: AppTheme.lightTheme,
       home: const ChatApp(),
     );
   }
@@ -46,6 +45,19 @@ class _ChatAppState extends State<ChatApp> {
   final _webSocketService = WebSocketService();
 
   @override
+  void initState() {
+    super.initState();
+    _loadSavedUserId();
+  }
+
+  void _loadSavedUserId() {
+    final savedUserId = AuthService.getUserId();
+    if (savedUserId != null) {
+      setState(() => _userId = savedUserId);
+    }
+  }
+
+  @override
   void dispose() {
     _webSocketService.dispose();
     super.dispose();
@@ -53,6 +65,10 @@ class _ChatAppState extends State<ChatApp> {
 
   void _handleLogin(String userId) {
     setState(() => _userId = userId);
+  }
+
+  void _handleLogout() {
+    setState(() => _userId = null);
   }
 
   void _handleChatroomSelected(Chatroom chatroom) {
@@ -79,6 +95,7 @@ class _ChatAppState extends State<ChatApp> {
       userId: _userId!,
       chatService: _chatService,
       onChatroomSelected: _handleChatroomSelected,
+      onLogout: _handleLogout,
     );
   }
 }
