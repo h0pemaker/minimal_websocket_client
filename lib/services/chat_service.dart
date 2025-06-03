@@ -5,7 +5,7 @@ import '../models/chatroom.dart';
 class ChatService {
   static const String baseUrl = 'http://10.0.2.2:3000';
 
-  Future<List<Chatroom>> fetchChatrooms(String userId) async {
+  Future<List<Chatroom>> fetchUserChatrooms(String userId) async {
     final url = '$baseUrl/api/chatrooms/user/$userId/chatrooms';
     try {
       final response = await http.get(Uri.parse(url));
@@ -13,10 +13,44 @@ class ChatService {
         final List<dynamic> chatroomListJson = jsonDecode(response.body);
         return chatroomListJson.map((json) => Chatroom.fromJson(json)).toList();
       } else {
-        throw Exception('Failed to fetch chatrooms: ${response.statusCode}');
+        throw Exception('Failed to fetch user chatrooms: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error fetching chatrooms: $e');
+      print('Error fetching user chatrooms: $e');
+      return [];
+    }
+  }
+
+  Future<List<Chatroom>> fetchAllChatrooms() async {
+    final url = '$baseUrl/api/chatrooms';
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final List<dynamic> chatroomListJson = jsonDecode(response.body);
+        return chatroomListJson.map((json) => Chatroom.fromJson(json)).toList();
+      } else {
+        throw Exception('Failed to fetch all chatrooms: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching all chatrooms: $e');
+      return [];
+    }
+  }
+
+  Future<List<String>> fetchUserMemberships(String userId) async {
+    final url = '$baseUrl/api/memberships/user/$userId';
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final List<dynamic> memberships = jsonDecode(response.body);
+        return memberships
+            .map((json) => json['chatroomId'] as String)
+            .toList();
+      } else {
+        throw Exception('Failed to fetch memberships: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching memberships: $e');
       return [];
     }
   }
@@ -60,6 +94,17 @@ class ChatService {
       }
     } catch (e) {
       print('Error adding member: $e');
+      return false;
+    }
+  }
+
+  Future<bool> deleteChatroom(String chatroomId) async {
+    final url = '$baseUrl/api/chatrooms/$chatroomId';
+    try {
+      final response = await http.delete(Uri.parse(url));
+      return response.statusCode == 200 || response.statusCode == 204;
+    } catch (e) {
+      print('Error deleting chatroom: $e');
       return false;
     }
   }

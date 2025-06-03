@@ -62,9 +62,9 @@ class _ChatAppState extends State<ChatApp> {
   void _initializeWebSocket(String userId) {
     _webSocketService.initialize(
       userId: userId,
-      onConnected: () {
+      onConnectionStateChanged: (isConnected) {
         if (mounted) {
-          setState(() => _isConnecting = false);
+          setState(() => _isConnecting = !isConnected);
         }
       },
     );
