@@ -43,6 +43,7 @@ class _ChatAppState extends State<ChatApp> {
   String? _userId;
   final _chatService = ChatService();
   final _webSocketService = WebSocketService();
+  bool _isConnecting = true;
 
   @override
   void initState() {
@@ -54,7 +55,19 @@ class _ChatAppState extends State<ChatApp> {
     final savedUserId = AuthService.getUserId();
     if (savedUserId != null) {
       setState(() => _userId = savedUserId);
+      _initializeWebSocket(savedUserId);
     }
+  }
+
+  void _initializeWebSocket(String userId) {
+    _webSocketService.initialize(
+      userId: userId,
+      onConnected: () {
+        if (mounted) {
+          setState(() => _isConnecting = false);
+        }
+      },
+    );
   }
 
   @override
@@ -65,10 +78,15 @@ class _ChatAppState extends State<ChatApp> {
 
   void _handleLogin(String userId) {
     setState(() => _userId = userId);
+    _initializeWebSocket(userId);
   }
 
   void _handleLogout() {
-    setState(() => _userId = null);
+    _webSocketService.dispose();
+    setState(() {
+      _userId = null;
+      _isConnecting = true;
+    });
   }
 
   void _handleChatroomSelected(Chatroom chatroom) {
@@ -94,6 +112,8 @@ class _ChatAppState extends State<ChatApp> {
     return ChatroomListScreen(
       userId: _userId!,
       chatService: _chatService,
+      webSocketService: _webSocketService,
+      isConnecting: _isConnecting,
       onChatroomSelected: _handleChatroomSelected,
       onLogout: _handleLogout,
     );

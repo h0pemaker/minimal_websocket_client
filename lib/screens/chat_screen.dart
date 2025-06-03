@@ -27,24 +27,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<Message> _messages = [];
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  bool _isConnecting = true;
 
   @override
   void initState() {
     super.initState();
-    _initializeWebSocket();
-  }
-
-  void _initializeWebSocket() {
-    widget.webSocketService.initialize(
-      userId: widget.userId,
-      onMessageReceived: _handleMessageReceived,
-      onConnected: () {
-        if (mounted) {
-          setState(() => _isConnecting = false);
-        }
-      },
-    );
+    widget.webSocketService.onMessageReceived = _handleMessageReceived;
   }
 
   void _handleMessageReceived(Message message) {
@@ -103,17 +90,28 @@ class _ChatScreenState extends State<ChatScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: widget.onBack,
         ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            Text(
-              'Chatroom ${widget.chatroom.id}',
-              style: theme.textTheme.titleLarge,
+            Hero(
+              tag: 'avatar-${widget.chatroom.id}',
+              child: CircleAvatar(
+                backgroundColor: _getAvatarColor(widget.chatroom.id),
+                child: Text(
+                  _getInitials(widget.chatroom.id),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ),
-            Text(
-              _isConnecting ? 'Connecting...' : 'Connected',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: _isConnecting ? AppColors.warning : AppColors.success,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Chatroom ${widget.chatroom.id}',
+                style: theme.textTheme.titleLarge,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ),
           ],
@@ -121,30 +119,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          if (_isConnecting)
-            Container(
-              color: AppColors.warning.withOpacity(0.1),
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(AppColors.warning),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Connecting to chat server...',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.warning,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           Expanded(
             child: _messages.isEmpty
                 ? Center(
@@ -233,5 +207,21 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+  }
+
+  Color _getAvatarColor(String chatroomId) {
+    final colors = [
+      AppColors.primary,
+      AppColors.secondary,
+      AppColors.accent,
+      AppColors.info,
+      AppColors.success,
+    ];
+    final colorIndex = chatroomId.hashCode % colors.length;
+    return colors[colorIndex];
+  }
+
+  String _getInitials(String chatroomId) {
+    return chatroomId.length > 2 ? chatroomId.substring(0, 2).toUpperCase() : chatroomId.toUpperCase();
   }
 }

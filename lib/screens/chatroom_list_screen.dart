@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import '../models/chatroom.dart';
+import '../models/message.dart';
 import '../services/chat_service.dart';
 import '../services/auth_service.dart';
+import '../services/websocket_service.dart';
 import '../config/theme.dart';
 
 class ChatroomListScreen extends StatefulWidget {
   final String userId;
   final Function(Chatroom) onChatroomSelected;
   final ChatService chatService;
+  final WebSocketService webSocketService;
+  final bool isConnecting;
   final VoidCallback onLogout;
 
   const ChatroomListScreen({
@@ -15,6 +19,8 @@ class ChatroomListScreen extends StatefulWidget {
     required this.userId,
     required this.onChatroomSelected,
     required this.chatService,
+    required this.webSocketService,
+    required this.isConnecting,
     required this.onLogout,
   }) : super(key: key);
 
@@ -25,11 +31,36 @@ class ChatroomListScreen extends StatefulWidget {
 class _ChatroomListScreenState extends State<ChatroomListScreen> {
   List<Chatroom> _chatrooms = [];
   bool _isLoading = true;
+  bool _isCreatingChatroom = false;
+  bool _isAddingMember = false;
+  final TextEditingController _userIdController = TextEditingController();
+  final TextEditingController _chatroomIdController = TextEditingController();
+  Map<String, Message> _lastMessages = {};
 
   @override
   void initState() {
     super.initState();
     _fetchChatrooms();
+    _setupMessageListener();
+  }
+
+  void _setupMessageListener() {
+    widget.webSocketService.onMessageReceived = _handleMessageReceived;
+  }
+
+  void _handleMessageReceived(Message message) {
+    setState(() {
+      _lastMessages[message.chatroomId] = message;
+      // Optionally refresh chatrooms list if needed
+      _fetchChatrooms();
+    });
+  }
+
+  @override
+  void dispose() {
+    _userIdController.dispose();
+    _chatroomIdController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchChatrooms() async {
@@ -50,6 +81,144 @@ class _ChatroomListScreenState extends State<ChatroomListScreen> {
             backgroundColor: AppColors.error,
           ),
         );
+      }
+    }
+  }
+
+  Future<void> _handleCreateChatroom() async {
+    setState(() => _isCreatingChatroom = true);
+
+    try {
+      final newChatroom = await widget.chatService.createChatroom();
+      if (newChatroom != null) {
+        await _fetchChatrooms();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Created chatroom: ${newChatroom.id}'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating chatroom: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isCreatingChatroom = false);
+      }
+    }
+  }
+
+  Future<void> _showAddMemberDialog() async {
+    _userIdController.clear();
+    _chatroomIdController.clear();
+
+    final theme = Theme.of(context);
+    
+    return showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Add Member to Chatroom',
+          style: theme.textTheme.titleLarge,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _userIdController,
+              decoration: const InputDecoration(
+                labelText: 'User ID',
+                hintText: 'Enter user ID to add',
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _chatroomIdController,
+              decoration: const InputDecoration(
+                labelText: 'Chatroom ID',
+                hintText: 'Enter chatroom ID',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: _isAddingMember ? null : () => _handleAddMember(context),
+            child: _isAddingMember
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Add Member'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleAddMember(BuildContext context) async {
+    final userId = _userIdController.text.trim();
+    final chatroomId = _chatroomIdController.text.trim();
+
+    if (userId.isEmpty || chatroomId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter both User ID and Chatroom ID'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isAddingMember = true);
+
+    try {
+      final success = await widget.chatService.addMemberToChatroom(
+        userId: userId,
+        chatroomId: chatroomId,
+      );
+
+      if (success) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Member added successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        await _fetchChatrooms();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to add member'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error adding member: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isAddingMember = false);
       }
     }
   }
@@ -115,9 +284,9 @@ class _ChatroomListScreenState extends State<ChatroomListScreen> {
           children: [
             const Text('Chatrooms'),
             Text(
-              'User ID: ${widget.userId}',
+              widget.isConnecting ? 'Connecting...' : 'Connected',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.secondaryText,
+                color: widget.isConnecting ? AppColors.warning : AppColors.success,
               ),
             ),
           ],
@@ -126,14 +295,11 @@ class _ChatroomListScreenState extends State<ChatroomListScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _handleLogout,
-            tooltip: 'Logout',
           ),
         ],
       ),
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : _chatrooms.isEmpty
               ? Center(
                   child: Column(
@@ -142,18 +308,18 @@ class _ChatroomListScreenState extends State<ChatroomListScreen> {
                       Icon(
                         Icons.chat_bubble_outline,
                         size: 64,
-                        color: AppColors.secondaryText.withOpacity(0.5),
+                        color: Colors.grey[300],
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'No chatrooms available',
+                        'No chatrooms yet',
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: AppColors.secondaryText,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Pull to refresh the list',
+                        'Create a new chatroom to get started!',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: AppColors.secondaryText,
                         ),
@@ -161,72 +327,79 @@ class _ChatroomListScreenState extends State<ChatroomListScreen> {
                     ],
                   ),
                 )
-              : RefreshIndicator(
-                  onRefresh: _fetchChatrooms,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _chatrooms.length,
-                    itemBuilder: (context, index) {
-                      final chatroom = _chatrooms[index];
-                      final avatarColor = _getAvatarColor(chatroom.id);
-                      final initials = _getInitials(chatroom.id);
-
-                      return Card(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 4,
-                        ),
-                        child: InkWell(
-                          onTap: () => widget.onChatroomSelected(chatroom),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Hero(
-                                  tag: 'avatar-${chatroom.id}',
-                                  child: CircleAvatar(
-                                    backgroundColor: avatarColor,
-                                    child: Text(
-                                      initials,
-                                      style: theme.textTheme.titleMedium?.copyWith(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Chatroom ${chatroom.id}',
-                                        style: theme.textTheme.titleMedium,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Tap to join the conversation',
-                                        style: theme.textTheme.bodyMedium?.copyWith(
-                                          color: AppColors.secondaryText,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.chevron_right,
-                                  color: AppColors.secondaryText,
-                                ),
-                              ],
+              : ListView.builder(
+                  itemCount: _chatrooms.length,
+                  padding: const EdgeInsets.all(8),
+                  itemBuilder: (context, index) {
+                    final chatroom = _chatrooms[index];
+                    final lastMessage = _lastMessages[chatroom.id];
+                    
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                        vertical: 4,
+                        horizontal: 8,
+                      ),
+                      child: ListTile(
+                        leading: Hero(
+                          tag: 'avatar-${chatroom.id}',
+                          child: CircleAvatar(
+                            backgroundColor: _getAvatarColor(chatroom.id),
+                            child: Text(
+                              chatroom.id.substring(0, 2).toUpperCase(),
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
-                      );
-                    },
-                  ),
+                        title: Text(
+                          'Chatroom ${chatroom.id}',
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        subtitle: lastMessage != null
+                            ? Text(
+                                '${lastMessage.senderId}: ${lastMessage.content}',
+                                style: theme.textTheme.bodySmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : Text(
+                                'No messages yet',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: AppColors.secondaryText,
+                                ),
+                              ),
+                        onTap: () => widget.onChatroomSelected(chatroom),
+                      ),
+                    );
+                  },
                 ),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'create-chatroom-fab',
+            onPressed: _isCreatingChatroom ? null : _handleCreateChatroom,
+            child: _isCreatingChatroom
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Icon(Icons.add),
+          ),
+          const SizedBox(height: 16),
+          FloatingActionButton(
+            heroTag: 'add-member-fab',
+            onPressed: _showAddMemberDialog,
+            child: const Icon(Icons.person_add),
+          ),
+        ],
+      ),
     );
   }
 } 

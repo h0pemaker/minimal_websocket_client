@@ -13,14 +13,22 @@ class WebSocketService {
   MessageCallback? _onMessageReceived;
   ConnectionCallback? _onConnected;
 
+  set onMessageReceived(MessageCallback callback) {
+    _onMessageReceived = callback;
+  }
+
+  set onConnected(ConnectionCallback callback) {
+    _onConnected = callback;
+  }
+
   void initialize({
     required String userId,
-    required MessageCallback onMessageReceived,
-    required ConnectionCallback onConnected,
+    MessageCallback? onMessageReceived,
+    ConnectionCallback? onConnected,
   }) {
     _userId = userId;
-    _onMessageReceived = onMessageReceived;
-    _onConnected = onConnected;
+    if (onMessageReceived != null) _onMessageReceived = onMessageReceived;
+    if (onConnected != null) _onConnected = onConnected;
     _connect();
   }
 
